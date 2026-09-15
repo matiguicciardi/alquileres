@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Control de Alquileres</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    color-scheme: light dark;
+    --bg:#eef1ef;
+    --surface:#ffffff;
+    --surface-2:#e3e9e7;
+    --ink:#182525;
+    --ink-soft:#5c6c6b;
+    --ink-faint:#8a9998;
+    --line:#d2d9d7;
+    --accent:#2f6f77;
+    --accent-ink:#ffffff;
+    --accent-soft:#dbebec;
+    --good:#2f8a55;
+    --good-soft:#dcf0e3;
+    --warn:#a8781f;
+    --warn-soft:#f3e8d0;
+    --bad:#b23a3a;
+    --bad-soft:#f5dcdc;
+    --shadow: 0 1px 2px rgba(24,37,37,0.06), 0 6px 16px rgba(24,37,37,0.05);
+    font-size:16px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#10181a;
+      --surface:#182425;
+      --surface-2:#1f2d2e;
+      --ink:#e6edec;
+      --ink-soft:#9bacab;
+      --ink-faint:#6d7f7e;
+      --line:#2b3c3d;
+      --accent:#5fa9ae;
+      --accent-ink:#0c1718;
+      --accent-soft:#1f3a3c;
+      --good:#5bbf85;
+      --good-soft:#1c3527;
+      --warn:#d9ab52;
+      --warn-soft:#3a2f18;
+      --bad:#e2807f;
+      --bad-soft:#3a2222;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
+    }
+  }
+
+  *{box-sizing:border-box;}
+  html,body{ margin:0; background:var(--bg); }
+  body{
+    color:var(--ink);
+    font-family:"IBM Plex Sans", system-ui, sans-serif;
+    padding-inline:20px;
+    padding-block:28px 60px;
+  }
+  h1,h2,.display{
+    font-family:"Fraunces", Georgia, serif;
+    font-weight:600;
+    letter-spacing:-0.01em;
+  }
+  .mono{ font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  button{ font-family:inherit; }
+  input{ font-family:inherit; color:inherit; }
+  [hidden]{ display:none !important; }
+
+  .wrap{ max-width:1080px; margin:0 auto; }
+
+  /* ---------- header ---------- */
+  .topbar{
+    display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between;
+    gap:16px; margin-bottom:22px;
+  }
+  .titleblock h1{ font-size:1.7rem; margin:0 0 2px; text-wrap:balance; }
+  .titleblock .sub{ color:var(--ink-soft); font-size:0.88rem; }
+  .status{ display:inline-flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--ink-soft); margin-top:6px; }
+  .status .dot{ width:7px; height:7px; border-radius:50%; background:var(--good); flex:none; }
+  .status.offline .dot{ background:var(--warn); }
+  .status.saving .dot{ background:var(--accent); animation:pulse 1s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
+  .monthnav{
+    display:flex; align-items:center; gap:10px;
+    background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:8px 10px; box-shadow:var(--shadow);
+  }
+  .monthnav button{
+    width:32px; height:32px; border-radius:8px; border:1px solid var(--line);
+    background:var(--surface-2); color:var(--ink); cursor:pointer; font-size:1rem;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .monthnav button:hover{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
+  .monthnav .mlabel{ min-width:150px; text-align:center; font-weight:600; font-size:0.95rem; }
+  .monthnav .today{
+    font-size:0.72rem; color:var(--accent); border:1px solid var(--accent); border-radius:999px;
+    padding:3px 9px; background:var(--accent-soft); cursor:pointer;
+  }
+
+  /* ---------- stats ---------- */
+  .stats{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr));
+    gap:10px; margin-bottom:26px;
+  }
+  .stat{
+    background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    padding:14px 16px; box-shadow:var(--shadow);
+  }
+  .stat .label{ font-size:0.74rem; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px; }
+  .stat .value{ font-size:1.35rem; font-weight:600; }
+  .stat .value.mono{ font-size:1.3rem; }
+  .stat.accent .value{ color:var(--accent); }
+  .stat.warn .value{ color:var(--warn); }
+
+  /* ---------- grid ---------- */
+  .grid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(320px,1fr));
+    gap:16px;
+  }
+
+  .card{
+    background:var(--surface); border:1px solid var(--line); border-radius:16px;
+    box-shadow:var(--shadow); padding:16px 16px 14px; display:flex; flex-direction:column; gap:12px;
+    position:relative;
+  }
+  .card .head{ display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+  .card .head .fields{ flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+  .field-text{
+    border:none; background:transparent; padding:2px 0; width:100%;
+    border-bottom:1px solid transparent; color:var(--ink);
+  }
+  .field-text:hover{ border-bottom-color:var(--line); }
+  .field-text:focus{ outline:none; border-bottom-color:var(--accent); }
+  .name-field{ font-family:"Fraunces", Georgia, serif; font-weight:600; font-size:1.12rem; }
+  .name-field::placeholder{ color:var(--ink-faint); font-family:"IBM Plex Sans", sans-serif; font-weight:400; }
+  .sub-field{ font-size:0.82rem; color:var(--ink-soft); }
+  .sub-field::placeholder{ color:var(--ink-faint); }
+  .tenant-row{ display:flex; align-items:center; gap:6px; font-size:0.82rem; color:var(--ink-soft); }
+  .tenant-row .tlabel{ flex:none; color:var(--ink-faint); }
+
+  .del-btn{
+    flex:none; width:28px; height:28px; border-radius:8px; border:1px solid var(--line);
+    background:var(--surface-2); color:var(--ink-soft); cursor:pointer; font-size:0.85rem;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .del-btn:hover{ background:var(--bad-soft); border-color:var(--bad); color:var(--bad); }
+
+  .confirm-row{
+    display:flex; align-items:center; gap:8px; background:var(--bad-soft);
+    border:1px solid var(--bad); border-radius:10px; padding:8px 10px; font-size:0.82rem;
+  }
+  .confirm-row span{ flex:1; color:var(--ink); }
+  .confirm-row button{ border:none; border-radius:7px; padding:5px 9px; font-size:0.78rem; cursor:pointer; }
+  .confirm-row .yes{ background:var(--bad); color:#fff; }
+  .confirm-row .no{ background:var(--surface); border:1px solid var(--line); }
+
+  .duepill{
+    align-self:flex-start; font-size:0.72rem; padding:3px 9px; border-radius:999px;
+    background:var(--surface-2); color:var(--ink-soft); border:1px solid var(--line);
+  }
+  .duepill.warn{ background:var(--warn-soft); color:var(--warn); border-color:var(--warn); }
+  .duepill.bad{ background:var(--bad-soft); color:var(--bad); border-color:var(--bad); }
+
+  .rentrow{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--accent-soft); border-radius:10px; padding:9px 12px;
+  }
+  .rentrow label{ font-size:0.78rem; color:var(--ink-soft); }
+  .rentrow .cur{ display:flex; align-items:center; gap:4px; }
+  .rentrow .cur span{ color:var(--ink-soft); font-size:0.9rem; }
+  .money-input{
+    border:none; background:transparent; font-family:"IBM Plex Mono", monospace; font-weight:600;
+    font-size:1.05rem; width:120px; text-align:right; color:var(--accent);
+  }
+  .money-input:focus{ outline:none; }
+
+  .services{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .svc{
+    border:1px solid var(--line); border-radius:10px; padding:8px 10px;
+    background:var(--surface-2); display:flex; flex-direction:column; gap:6px;
+    transition: background .15s, border-color .15s;
+  }
+  .svc.paid{ background:var(--good-soft); border-color:var(--good); }
+  .svc .svctop{ display:flex; align-items:center; gap:7px; font-size:0.83rem; }
+  .svc input[type=checkbox]{ width:15px; height:15px; accent-color:var(--good); flex:none; }
+  .svc .svcname{ font-weight:500; }
+  .svc .svcval{ display:flex; align-items:center; gap:3px; }
+  .svc .svcval span{ font-size:0.78rem; color:var(--ink-faint); }
+  .svc-input{
+    border:none; background:transparent; font-family:"IBM Plex Mono", monospace; font-size:0.86rem;
+    width:100%; color:var(--ink);
+  }
+  .svc-input:focus{ outline:none; }
+
+  .deductions{ display:flex; flex-direction:column; gap:6px; border-top:1px dashed var(--line); padding-top:10px; }
+  .ded-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:0.82rem; }
+  .ded-row label{ color:var(--ink-soft); }
+  .ded-row .cur{ display:flex; align-items:center; gap:3px; }
+  .ded-row .cur span{ color:var(--ink-faint); font-size:0.8rem; }
+  .ded-input{
+    border:none; border-bottom:1px solid var(--line); background:transparent;
+    font-family:"IBM Plex Mono", monospace; font-size:0.88rem; width:100px; text-align:right; color:var(--bad);
+  }
+  .ded-input:focus{ outline:none; border-bottom-color:var(--bad); }
+
+  .netorow{
+    display:flex; justify-content:space-between; align-items:baseline; font-size:0.88rem;
+    padding-top:2px;
+  }
+  .netorow .nlabel{ color:var(--ink-soft); }
+  .netorow .nval{ font-family:"IBM Plex Mono", monospace; font-weight:600; }
+  .netorow .nval.neg{ color:var(--bad); }
+  .netorow .nval.pos{ color:var(--good); }
+
+  /* ---------- add card ---------- */
+  .addcard{
+    border:1.5px dashed var(--line); border-radius:16px; display:flex; align-items:center;
+    justify-content:center; min-height:120px; cursor:pointer; color:var(--ink-soft);
+    background:transparent; font-size:0.95rem; gap:8px;
+  }
+  .addcard:hover{ border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+  .newform{
+    background:var(--surface); border:1px solid var(--accent); border-radius:16px; box-shadow:var(--shadow);
+    padding:16px; display:flex; flex-direction:column; gap:10px;
+  }
+  .newform h3{ margin:0; font-size:1rem; font-family:"Fraunces", serif; }
+  .newform label{ font-size:0.78rem; color:var(--ink-soft); display:flex; flex-direction:column; gap:3px; }
+  .newform input{
+    border:1px solid var(--line); border-radius:8px; padding:7px 9px; font-size:0.88rem; background:var(--bg);
+    color: var(--ink);
+  }
+  .newform input:focus{ outline:none; border-color:var(--accent); }
+  .newform .actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:4px; }
+  .btn{ border:none; border-radius:8px; padding:8px 14px; font-size:0.85rem; cursor:pointer; }
+  .btn.primary{ background:var(--accent); color:var(--accent-ink); font-weight:600; }
+  .btn.ghost{ background:var(--surface-2); color:var(--ink); }
+
+  /* ---------- empty state ---------- */
+  .empty{
+    text-align:center; padding:60px 20px; color:var(--ink-soft);
+  }
+  .empty h2{ font-size:1.3rem; color:var(--ink); margin-bottom:6px; }
+  .empty p{ max-width:420px; margin:0 auto 18px; font-size:0.92rem; }
+
+  @media (max-width:480px){
+    body{ padding-inline:14px; }
+    .grid{ grid-template-columns:1fr; }
+    .money-input{ width:96px; }
+  }
+
+  /* ---------- login ---------- */
+  .login-overlay{
+    position:fixed; inset:0; background:var(--bg); z-index:50;
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .login-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:16px;
+    box-shadow:var(--shadow); padding:28px 26px; width:100%; max-width:340px;
+    display:flex; flex-direction:column; gap:14px;
+  }
+  .login-card h1{ font-size:1.3rem; margin:0; }
+  .login-card p{ font-size:0.85rem; color:var(--ink-soft); margin:0; }
+  .login-card input[type=password]{
+    border:1px solid var(--line); border-radius:8px; padding:10px 12px;
+    font-size:0.95rem; background:var(--bg); color:var(--ink);
+  }
+  .login-card input:focus{ outline:none; border-color:var(--accent); }
+  .login-card .err{ font-size:0.8rem; color:var(--bad); min-height:1.1em; }
+  .login-card button{
+    background:var(--accent); color:var(--accent-ink); border:none; border-radius:8px;
+    padding:10px 14px; font-weight:600; cursor:pointer; font-size:0.92rem;
+  }
+  .login-card button:disabled{ opacity:.6; cursor:default; }
+</style>
+</head>
+<body>
+
+<div class="login-overlay" id="loginOverlay">
+  <form class="login-card" id="loginForm">
+    <h1>Control de Alquileres</h1>
+    <p>Ingresá tu contraseña para ver tus propiedades.</p>
+    <input type="password" id="loginPass" placeholder="Contraseña" autocomplete="current-password" required />
+    <div class="err" id="loginErr"></div>
+    <button type="submit" id="loginBtn">Entrar</button>
+  </form>
+</div>
+
+<div class="wrap" id="appWrap" hidden>
+  <div class="topbar">
+    <div class="titleblock">
+      <h1>Control de Alquileres</h1>
+      <div class="sub">Cobros, servicios y descuentos por propiedad</div>
+      <div class="status" id="statusLine"><span class="dot"></span><span id="statusText">Conectando…</span></div>
+    </div>
+    <div class="monthnav">
+      <button id="prevMonth" aria-label="Mes anterior">‹</button>
+      <div class="mlabel" id="monthLabel">—</div>
+      <button id="nextMonth" aria-label="Mes siguiente">›</button>
+      <button class="today" id="todayBtn" type="button">hoy</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat accent">
+      <div class="label">Cobrado este mes</div>
+      <div class="value mono" id="statCobrado">$ 0</div>
+    </div>
+    <div class="stat warn">
+      <div class="label">Servicios pendientes</div>
+      <div class="value" id="statPendientes">0</div>
+    </div>
+    <div class="stat">
+      <div class="label">Descuentos del mes</div>
+      <div class="value mono" id="statDescuentos">$ 0</div>
+    </div>
+    <div class="stat">
+      <div class="label">Neto total</div>
+      <div class="value mono" id="statNeto">$ 0</div>
+    </div>
+  </div>
+
+  <div class="empty" id="emptyState" hidden>
+    <h2>Todavía no cargaste propiedades</h2>
+    <p>Agregá tu primera propiedad en alquiler para empezar a llevar el control de cobros, servicios y descuentos mes a mes.</p>
+    <button class="btn primary" id="emptyAddBtn">+ Agregar propiedad</button>
+  </div>
+
+  <div class="grid" id="propsGrid"></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Supabase config ----------
+  // Proyecto "alquileres" de Matías (South America / São Paulo).
+  // La anon key es pública por diseño de Supabase (va siempre en el
+  // cliente); el acceso real queda controlado por las políticas RLS
+  // definidas en las tablas.
+  var SUPABASE_URL = "https://bxlrjlcxkboodzbghqnn.supabase.co";
+  var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4bHJqbGN4a2Jvb2R6YmdocW5uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0OTI1MzksImV4cCI6MjEwNTA2ODUzOX0.y5MrKbuidwHjL-oSsxM8lZRW-wSvK91_CW5ZunAfTk8";
+
+  var sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+  var SERVICIOS = [
+    {key:"agua", name:"Agua"},
+    {key:"luz", name:"Luz"},
+    {key:"gas", name:"Gas"},
+    {key:"expensas", name:"Expensas"}
+  ];
+  var MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+
+  var properties = [];        // {id, nombre, direccion, inquilino, contratoHasta, orden}
+  var cardEls = {};            // id -> card element
+  var recordsByProp = {};      // id -> record object for current month
+  var lastKnownAlquiler = {};  // id -> last non-zero alquiler seen (for placeholder hint)
+  var currentMonth = monthKey(new Date());
+  var recordTimers = {};       // propId -> timeout
+  var metaTimers = {};         // propId -> timeout
+
+  var grid = document.getElementById("propsGrid");
+  var emptyState = document.getElementById("emptyState");
+  var monthLabel = document.getElementById("monthLabel");
+  var statusText = document.getElementById("statusText");
+  var statusLine = document.getElementById("statusLine");
+
+  function monthKey(d){
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+  }
+  function shiftMonth(key, delta){
+    var parts = key.split("-");
+    var y = parseInt(parts[0],10), m = parseInt(parts[1],10) - 1;
+    var d = new Date(y, m + delta, 1);
+    return monthKey(d);
+  }
+  function labelForMonth(key){
+    var parts = key.split("-");
+    var m = parseInt(parts[1],10) - 1;
+    var name = MESES[m] || "";
+    return name.charAt(0).toUpperCase() + name.slice(1) + " " + parts[0];
+  }
+  function fmtMoney(n){
+    n = Number(n) || 0;
+    try{
+      return new Intl.NumberFormat("es-AR", {style:"currency", currency:"ARS", maximumFractionDigits:0}).format(n);
+    }catch(e){
+      return "$ " + Math.round(n).toString();
+    }
+  }
+  function fmtDate(iso){
+    if(!iso) return "";
+    var parts = iso.split("-");
+    if(parts.length !== 3) return iso;
+    var months = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+    return parseInt(parts[2],10) + " " + months[parseInt(parts[1],10)-1] + " " + parts[0];
+  }
+  function defaultServicios(){
+    var o = {};
+    SERVICIOS.forEach(function(s){ o[s.key] = {pagado:false, valor:0}; });
+    return o;
+  }
+  function defaultRecord(){
+    return { alquiler:0, servicios: defaultServicios(), expensasExtra:0, arreglos:0 };
+  }
+  function normalizeRecord(data){
+    var r = defaultRecord();
+    if(!data) return r;
+    r.alquiler = Number(data.alquiler) || 0;
+    r.expensasExtra = Number(data.expensasExtra) || 0;
+    r.arreglos = Number(data.arreglos) || 0;
+    var svc = data.servicios || {};
+    SERVICIOS.forEach(function(s){
+      var v = svc[s.key] || {};
+      r.servicios[s.key] = { pagado: !!v.pagado, valor: Number(v.valor) || 0 };
+    });
+    return r;
+  }
+  function debounce(map, key, fn, ms){
+    if(map[key]) clearTimeout(map[key]);
+    map[key] = setTimeout(function(){ delete map[key]; fn(); }, ms || 550);
+  }
+  function isFocused(el){ return document.activeElement === el; }
+
+  function setStatus(mode){
+    statusLine.classList.remove("offline","saving");
+    if(mode === "offline"){ statusLine.classList.add("offline"); statusText.textContent = "Sin conexión — revisá tu internet o la configuración de Supabase"; }
+    else if(mode === "saving"){ statusLine.classList.add("saving"); statusText.textContent = "Guardando…"; }
+    else { statusText.textContent = "Guardado en la nube"; }
+  }
+
+  // ---------- mapping DB rows <-> local objects ----------
+
+  function rowToProp(row){
+    return {
+      id: row.id,
+      nombre: row.nombre || "",
+      direccion: row.direccion || "",
+      inquilino: row.inquilino || "",
+      contratoHasta: row.contrato_hasta || "",
+      orden: typeof row.orden === "number" ? row.orden : 0
+    };
+  }
+  function rowToRecord(row){
+    return normalizeRecord({
+      alquiler: row.alquiler,
+      servicios: row.servicios,
+      expensasExtra: row.expensas_extra,
+      arreglos: row.arreglos
+    });
+  }
+  function recordDocId(propId, mes){ return propId + "_" + mes; }
+
+  // ---------- rendering ----------
+
+  function ensureCard(prop){
+    if(cardEls[prop.id]) return cardEls[prop.id];
+    var card = document.createElement("div");
+    card.className = "card";
+    card.dataset.id = prop.id;
+    card.innerHTML =
+      '<div class="head">' +
+        '<div class="fields">' +
+          '<input class="field-text name-field" data-field="nombre" placeholder="Nombre de la propiedad" />' +
+          '<input class="field-text sub-field" data-field="direccion" placeholder="Dirección" />' +
+          '<div class="tenant-row"><span class="tlabel">Inquilino:</span>' +
+            '<input class="field-text sub-field" data-field="inquilino" placeholder="Nombre del inquilino" style="flex:1"/></div>' +
+        '</div>' +
+        '<button class="del-btn" type="button" title="Eliminar propiedad">✕</button>' +
+      '</div>' +
+      '<div class="dueline">' +
+        '<span class="duepill" data-role="duepill"></span>' +
+        '<input type="date" class="field-text sub-field" data-field="contratoHasta" style="max-width:150px;font-size:0.78rem;margin-top:4px" />' +
+      '</div>' +
+      '<div class="confirm-row" data-role="confirm" hidden>' +
+        '<span>¿Eliminar esta propiedad y todo su historial?</span>' +
+        '<button type="button" class="no">No</button>' +
+        '<button type="button" class="yes">Sí, eliminar</button>' +
+      '</div>' +
+      '<div class="rentrow">' +
+        '<label>Alquiler cobrado</label>' +
+        '<div class="cur"><span>$</span><input type="number" min="0" step="1" class="money-input" data-role="alquiler" /></div>' +
+      '</div>' +
+      '<div class="services"></div>' +
+      '<div class="deductions">' +
+        '<div class="ded-row"><label>Expensas extraordinarias (te descuentan)</label><div class="cur"><span>$</span><input type="number" min="0" step="1" class="ded-input" data-role="expensasExtra"/></div></div>' +
+        '<div class="ded-row"><label>Arreglos (te descuentan)</label><div class="cur"><span>$</span><input type="number" min="0" step="1" class="ded-input" data-role="arreglos"/></div></div>' +
+        '<div class="netorow"><span class="nlabel">Neto a tu favor</span><span class="nval mono" data-role="neto">$ 0</span></div>' +
+      '</div>';
+
+    var svcWrap = card.querySelector(".services");
+    SERVICIOS.forEach(function(s){
+      var tile = document.createElement("div");
+      tile.className = "svc";
+      tile.dataset.svc = s.key;
+      tile.innerHTML =
+        '<div class="svctop"><input type="checkbox" data-svc-paid="' + s.key + '"/><span class="svcname">' + s.name + '</span></div>' +
+        '<div class="svcval"><span>$</span><input type="number" min="0" step="1" class="svc-input" data-svc-val="' + s.key + '"/></div>';
+      svcWrap.appendChild(tile);
+    });
+
+    ["nombre","direccion","inquilino","contratoHasta"].forEach(function(field){
+      var input = card.querySelector('[data-field="' + field + '"]');
+      input.addEventListener("input", function(){
+        var p = properties.find(function(x){ return x.id === prop.id; });
+        if(p) p[field] = input.value;
+        scheduleMetaSave(prop.id, field, input.value);
+        if(field === "contratoHasta") updateCardMeta(p || prop);
+      });
+    });
+
+    card.querySelector(".del-btn").addEventListener("click", function(){
+      card.querySelector('[data-role="confirm"]').hidden = false;
+    });
+    card.querySelector('[data-role="confirm"] .no').addEventListener("click", function(){
+      card.querySelector('[data-role="confirm"]').hidden = true;
+    });
+    card.querySelector('[data-role="confirm"] .yes').addEventListener("click", function(){
+      deleteProperty(prop.id);
+    });
+
+    var alquilerInput = card.querySelector('[data-role="alquiler"]');
+    alquilerInput.addEventListener("input", function(){
+      updateRecordField(prop.id, function(r){ r.alquiler = Number(alquilerInput.value) || 0; });
+    });
+    var expInput = card.querySelector('[data-role="expensasExtra"]');
+    expInput.addEventListener("input", function(){
+      updateRecordField(prop.id, function(r){ r.expensasExtra = Number(expInput.value) || 0; });
+    });
+    var arrInput = card.querySelector('[data-role="arreglos"]');
+    arrInput.addEventListener("input", function(){
+      updateRecordField(prop.id, function(r){ r.arreglos = Number(arrInput.value) || 0; });
+    });
+    SERVICIOS.forEach(function(s){
+      var cb = card.querySelector('[data-svc-paid="' + s.key + '"]');
+      var val = card.querySelector('[data-svc-val="' + s.key + '"]');
+      cb.addEventListener("change", function(){
+        updateRecordField(prop.id, function(r){ r.servicios[s.key].pagado = cb.checked; });
+      });
+      val.addEventListener("input", function(){
+        updateRecordField(prop.id, function(r){ r.servicios[s.key].valor = Number(val.value) || 0; });
+      });
+    });
+
+    cardEls[prop.id] = card;
+    return card;
+  }
+
+  function updateCardMeta(prop){
+    var card = cardEls[prop.id];
+    if(!card) return;
+    ["nombre","direccion","inquilino","contratoHasta"].forEach(function(field){
+      var input = card.querySelector('[data-field="' + field + '"]');
+      if(!isFocused(input)) input.value = prop[field] || "";
+    });
+    var pill = card.querySelector('[data-role="duepill"]');
+    if(!prop.contratoHasta){
+      pill.textContent = "Sin vencimiento";
+      pill.className = "duepill";
+    } else {
+      var due = new Date(prop.contratoHasta + "T00:00:00");
+      var today = new Date(); today.setHours(0,0,0,0);
+      var days = Math.round((due - today) / 86400000);
+      if(days < 0){
+        pill.textContent = "Venció hace " + Math.abs(days) + " día" + (Math.abs(days)===1?"":"s");
+        pill.className = "duepill bad";
+      } else if(days <= 60){
+        pill.textContent = "Vence en " + days + " día" + (days===1?"":"s") + " (" + fmtDate(prop.contratoHasta) + ")";
+        pill.className = "duepill warn";
+      } else {
+        pill.textContent = "Vence el " + fmtDate(prop.contratoHasta);
+        pill.className = "duepill";
+      }
+    }
+  }
+
+  function updateCardRecord(propId){
+    var card = cardEls[propId];
+    if(!card) return;
+    var r = recordsByProp[propId] || defaultRecord();
+
+    var alquilerInput = card.querySelector('[data-role="alquiler"]');
+    if(!isFocused(alquilerInput)){
+      alquilerInput.value = r.alquiler || "";
+      alquilerInput.placeholder = r.alquiler ? "" : (lastKnownAlquiler[propId] ? String(lastKnownAlquiler[propId]) : "0");
+    }
+    if(r.alquiler > 0) lastKnownAlquiler[propId] = r.alquiler;
+
+    var expInput = card.querySelector('[data-role="expensasExtra"]');
+    if(!isFocused(expInput)) expInput.value = r.expensasExtra || "";
+    var arrInput = card.querySelector('[data-role="arreglos"]');
+    if(!isFocused(arrInput)) arrInput.value = r.arreglos || "";
+
+    SERVICIOS.forEach(function(s){
+      var cb = card.querySelector('[data-svc-paid="' + s.key + '"]');
+      var val = card.querySelector('[data-svc-val="' + s.key + '"]');
+      var sv = r.servicios[s.key] || {pagado:false, valor:0};
+      cb.checked = !!sv.pagado;
+      var tile = card.querySelector('.svc[data-svc="' + s.key + '"]');
+      tile.classList.toggle("paid", !!sv.pagado);
+      if(!isFocused(val)) val.value = sv.valor || "";
+    });
+
+    var neto = (r.alquiler || 0) - (r.expensasExtra || 0) - (r.arreglos || 0);
+    var netoEl = card.querySelector('[data-role="neto"]');
+    netoEl.textContent = fmtMoney(neto);
+    netoEl.className = "nval mono " + (neto < 0 ? "neg" : (neto > 0 ? "pos" : ""));
+  }
+
+  function reorderGrid(){
+    var sorted = properties.slice().sort(function(a,b){ return (a.orden||0) - (b.orden||0); });
+    sorted.forEach(function(p){
+      var el = cardEls[p.id];
+      if(el) grid.appendChild(el);
+    });
+    var addCard = document.getElementById("addCardEl");
+    if(addCard) grid.appendChild(addCard);
+    emptyState.hidden = properties.length > 0;
+  }
+
+  function recomputeStats(){
+    var cobrado = 0, descuentos = 0, pendientes = 0;
+    properties.forEach(function(p){
+      var r = recordsByProp[p.id] || defaultRecord();
+      cobrado += r.alquiler || 0;
+      descuentos += (r.expensasExtra || 0) + (r.arreglos || 0);
+      SERVICIOS.forEach(function(s){
+        if(!r.servicios[s.key] || !r.servicios[s.key].pagado) pendientes++;
+      });
+    });
+    document.getElementById("statCobrado").textContent = fmtMoney(cobrado);
+    document.getElementById("statDescuentos").textContent = fmtMoney(descuentos);
+    document.getElementById("statNeto").textContent = fmtMoney(cobrado - descuentos);
+    document.getElementById("statPendientes").textContent = properties.length ? (pendientes + " / " + (properties.length * SERVICIOS.length)) : "0";
+  }
+
+  // ---------- persistence (Supabase) ----------
+
+  function scheduleMetaSave(propId, field, value){
+    if(!sb) { setStatus("offline"); return; }
+    debounce(metaTimers, propId, function(){
+      var column = field === "contratoHasta" ? "contrato_hasta" : field;
+      var body = {}; body[column] = value || null;
+      setStatus("saving");
+      sb.from("alquileres_propiedades").update(body).eq("id", propId).then(function(res){
+        setStatus(res.error ? "offline" : "online");
+      });
+    }, 500);
+  }
+
+  function updateRecordField(propId, mutator){
+    var r = recordsByProp[propId] ? Object.assign({}, recordsByProp[propId], {servicios: Object.assign({}, recordsByProp[propId].servicios)}) : defaultRecord();
+    Object.keys(r.servicios).forEach(function(k){ r.servicios[k] = Object.assign({}, r.servicios[k]); });
+    mutator(r);
+    recordsByProp[propId] = r;
+    updateCardRecord(propId);
+    recomputeStats();
+    if(!sb){ setStatus("offline"); return; }
+    debounce(recordTimers, propId, function(){
+      setStatus("saving");
+      var row = {
+        id: recordDocId(propId, currentMonth),
+        propiedad_id: propId,
+        mes: currentMonth,
+        alquiler: r.alquiler,
+        servicios: r.servicios,
+        expensas_extra: r.expensasExtra,
+        arreglos: r.arreglos
+      };
+      sb.from("alquileres_registros").upsert(row).then(function(res){
+        setStatus(res.error ? "offline" : "online");
+      });
+    }, 550);
+  }
+
+  function deleteProperty(propId){
+    properties = properties.filter(function(p){ return p.id !== propId; });
+    var el = cardEls[propId];
+    if(el && el.parentNode) el.parentNode.removeChild(el);
+    delete cardEls[propId];
+    delete recordsByProp[propId];
+    reorderGrid();
+    recomputeStats();
+    if(sb){
+      setStatus("saving");
+      sb.from("alquileres_propiedades").delete().eq("id", propId).then(function(res){
+        setStatus(res.error ? "offline" : "online");
+      });
+    }
+  }
+
+  function addProperty(data){
+    if(!sb){ setStatus("offline"); return; }
+    setStatus("saving");
+    sb.from("alquileres_propiedades").insert({
+      nombre: data.nombre,
+      direccion: data.direccion,
+      inquilino: data.inquilino,
+      contrato_hasta: data.contratoHasta || null,
+      orden: Date.now()
+    }).select().single().then(function(res){
+      if(res.error || !res.data){ setStatus("offline"); return; }
+      var prop = rowToProp(res.data);
+      properties.push(prop);
+      ensureCard(prop);
+      updateCardMeta(prop);
+      recordsByProp[prop.id] = defaultRecord();
+      updateCardRecord(prop.id);
+      reorderGrid();
+      recomputeStats();
+      setStatus("online");
+    });
+  }
+
+  // ---------- add-property form ----------
+
+  function buildAddCard(){
+    var wrap = document.createElement("div");
+    wrap.id = "addCardEl";
+    wrap.innerHTML = '<div class="addcard" id="addTrigger">+ Agregar propiedad</div>';
+    grid.appendChild(wrap);
+
+    function showForm(){
+      wrap.innerHTML =
+        '<div class="newform">' +
+          '<h3>Nueva propiedad</h3>' +
+          '<label>Nombre<input type="text" id="nfNombre" placeholder="Depto 3B, Local Belgrano…"/></label>' +
+          '<label>Dirección<input type="text" id="nfDireccion" placeholder="Calle 123, piso, depto"/></label>' +
+          '<label>Inquilino<input type="text" id="nfInquilino" placeholder="Nombre del inquilino"/></label>' +
+          '<label>Contrato vence<input type="date" id="nfFecha"/></label>' +
+          '<div class="actions">' +
+            '<button type="button" class="btn ghost" id="nfCancel">Cancelar</button>' +
+            '<button type="button" class="btn primary" id="nfSave">Guardar</button>' +
+          '</div>' +
+        '</div>';
+      document.getElementById("nfCancel").addEventListener("click", showTrigger);
+      document.getElementById("nfSave").addEventListener("click", function(){
+        var nombre = document.getElementById("nfNombre").value.trim();
+        if(!nombre){ document.getElementById("nfNombre").focus(); return; }
+        addProperty({
+          nombre: nombre,
+          direccion: document.getElementById("nfDireccion").value.trim(),
+          inquilino: document.getElementById("nfInquilino").value.trim(),
+          contratoHasta: document.getElementById("nfFecha").value || ""
+        });
+        showTrigger();
+      });
+      document.getElementById("nfNombre").focus();
+    }
+    function showTrigger(){
+      wrap.innerHTML = '<div class="addcard" id="addTrigger">+ Agregar propiedad</div>';
+      document.getElementById("addTrigger").addEventListener("click", showForm);
+    }
+    document.getElementById("addTrigger").addEventListener("click", showForm);
+    document.getElementById("emptyAddBtn").addEventListener("click", showForm);
+  }
+
+  // ---------- loading from Supabase ----------
+
+  function loadProperties(){
+    if(!sb){ setStatus("offline"); return Promise.resolve(); }
+    return sb.from("alquileres_propiedades").select("*").order("orden", {ascending:true}).then(function(res){
+      if(res.error){ setStatus("offline"); return; }
+      properties = (res.data || []).map(rowToProp);
+      properties.forEach(function(p){
+        ensureCard(p);
+        updateCardMeta(p);
+      });
+      reorderGrid();
+    });
+  }
+
+  function loadRecords(){
+    if(!sb) return Promise.resolve();
+    return sb.from("alquileres_registros").select("*").eq("mes", currentMonth).then(function(res){
+      var byProp = {};
+      if(!res.error && res.data){
+        res.data.forEach(function(row){ byProp[row.propiedad_id] = rowToRecord(row); });
+      }
+      properties.forEach(function(p){
+        recordsByProp[p.id] = byProp[p.id] || defaultRecord();
+        updateCardRecord(p.id);
+      });
+      recomputeStats();
+    });
+  }
+
+  function goToMonth(key){
+    currentMonth = key;
+    monthLabel.textContent = labelForMonth(currentMonth);
+    properties.forEach(function(p){ recordsByProp[p.id] = defaultRecord(); updateCardRecord(p.id); });
+    recomputeStats();
+    setStatus("saving");
+    loadRecords().then(function(){ setStatus("online"); });
+  }
+
+  document.getElementById("prevMonth").addEventListener("click", function(){ goToMonth(shiftMonth(currentMonth,-1)); });
+  document.getElementById("nextMonth").addEventListener("click", function(){ goToMonth(shiftMonth(currentMonth,1)); });
+  document.getElementById("todayBtn").addEventListener("click", function(){ goToMonth(monthKey(new Date())); });
+
+  function startApp(){
+    monthLabel.textContent = labelForMonth(currentMonth);
+    buildAddCard();
+    reorderGrid();
+
+    if(!sb){
+      setStatus("offline");
+    } else {
+      setStatus("saving");
+      loadProperties().then(loadRecords).then(function(){
+        setStatus("online");
+      }).catch(function(){
+        setStatus("offline");
+      });
+    }
+  }
+
+  // ---------- login ----------
+
+  function sha256Hex(text){
+    var enc = new TextEncoder().encode(text);
+    return crypto.subtle.digest("SHA-256", enc).then(function(buf){
+      return Array.prototype.map.call(new Uint8Array(buf), function(b){
+        return b.toString(16).padStart(2, "0");
+      }).join("");
+    });
+  }
+
+  var loginForm = document.getElementById("loginForm");
+  var loginErr = document.getElementById("loginErr");
+  var loginBtn = document.getElementById("loginBtn");
+
+  loginForm.addEventListener("submit", function(e){
+    e.preventDefault();
+    var pass = document.getElementById("loginPass").value;
+    loginErr.textContent = "";
+    if(!sb){
+      loginErr.textContent = "No se pudo conectar con la base de datos.";
+      return;
+    }
+    loginBtn.disabled = true;
+    loginBtn.textContent = "Verificando…";
+    sb.from("alquileres_usuarios").select("salt,password_hash").limit(1).single().then(function(res){
+      if(res.error || !res.data){
+        loginErr.textContent = "No se pudo verificar la contraseña. Revisá la tabla alquileres_usuarios.";
+        loginBtn.disabled = false;
+        loginBtn.textContent = "Entrar";
+        return;
+      }
+      sha256Hex(res.data.salt + pass).then(function(hash){
+        if(hash === res.data.password_hash){
+          document.getElementById("loginOverlay").remove();
+          document.getElementById("appWrap").hidden = false;
+          startApp();
+        } else {
+          setTimeout(function(){
+            loginErr.textContent = "Contraseña incorrecta.";
+            loginBtn.disabled = false;
+            loginBtn.textContent = "Entrar";
+          }, 400);
+        }
+      });
+    });
+  });
+
+})();
+</script>
+</body>
+</html>
