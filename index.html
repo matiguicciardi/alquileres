@@ -224,18 +224,6 @@
   }
   .fxhint{ font-size:0.74rem; color:var(--ink-soft); padding:0 2px; }
 
-  .fxbar{
-    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-    background:var(--surface); border:1px solid var(--line); border-radius:12px;
-    padding:8px 14px; box-shadow:var(--shadow); margin-bottom:16px; font-size:0.82rem; color:var(--ink-soft);
-  }
-  .fxbar .cur{ display:flex; align-items:center; gap:4px; }
-  .fxbar input{
-    border:none; border-bottom:1px solid var(--line); background:transparent;
-    font-family:"IBM Plex Mono", monospace; font-size:0.9rem; width:110px; color:var(--accent); font-weight:600;
-  }
-  .fxbar input:focus{ outline:none; border-bottom-color:var(--accent); }
-
   .svc-who{
     border:1px solid var(--line); background:var(--surface); border-radius:6px;
     font-size:0.7rem; padding:3px 4px; color:var(--ink-soft); width:100%;
@@ -244,6 +232,60 @@
     margin-left:auto; font-size:0.62rem; background:var(--warn-soft); color:var(--warn);
     padding:2px 7px; border-radius:999px; font-weight:500;
   }
+
+  /* ---------- contrato y ajuste ---------- */
+  .contract-panel{ border:1px solid var(--line); border-radius:10px; background:var(--surface-2); padding:2px 0; }
+  .contract-panel summary{
+    cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between;
+    gap:8px; padding:8px 10px; font-size:0.83rem; color:var(--ink-soft); font-weight:500;
+  }
+  .contract-panel summary::-webkit-details-marker{ display:none; }
+  .contract-panel summary::before{ content:"▸ "; color:var(--ink-faint); }
+  .contract-panel[open] summary::before{ content:"▾ "; }
+  .cpanel-body{ display:flex; flex-direction:column; gap:9px; padding:2px 12px 12px; }
+  .cfield{ font-size:0.78rem; color:var(--ink-soft); display:flex; flex-direction:column; gap:3px; }
+  .cfield input{
+    border:1px solid var(--line); border-radius:7px; padding:6px 8px; font-size:0.85rem;
+    background:var(--surface); color:var(--ink);
+  }
+  .cfield input:focus{ outline:none; border-color:var(--accent); }
+  .ajuste-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:0.82rem; }
+  .ajuste-row label{ color:var(--ink-soft); flex:1; }
+  .ajuste-row select{
+    border:1px solid var(--line); background:var(--surface); border-radius:6px;
+    font-size:0.78rem; padding:4px 6px; color:var(--ink); max-width:150px;
+  }
+  .money-input.small{ width:90px; font-size:0.9rem; }
+  .ipc-hint{ font-size:0.72rem; color:var(--ink-faint); }
+  .ajuste-note{ font-size:0.72rem; color:var(--ink-faint); line-height:1.4; }
+  .btn.small{ font-size:0.78rem; padding:7px 10px; align-self:flex-start; }
+  .nextadj-pill{
+    font-size:0.68rem; padding:2px 8px; border-radius:999px; background:var(--surface);
+    border:1px solid var(--line); color:var(--ink-soft); font-weight:400;
+  }
+  .nextadj-pill.bad{ background:var(--warn-soft); color:var(--warn); border-color:var(--warn); }
+
+  .linkbtn{
+    border:none; background:transparent; color:var(--accent); font-size:0.78rem; cursor:pointer;
+    padding:2px 0; text-decoration:underline; text-underline-offset:2px; align-self:flex-start;
+  }
+
+  /* ---------- modal ---------- */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(10,16,17,0.45); z-index:60;
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .modal-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow); padding:16px 18px; width:100%; max-width:480px;
+    max-height:80vh; overflow:auto; display:flex; flex-direction:column; gap:10px;
+  }
+  .modal-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .modal-head h3{ margin:0; font-size:1.05rem; font-family:"Fraunces", serif; }
+  .hist-table{ width:100%; border-collapse:collapse; font-size:0.82rem; }
+  .hist-table th{ text-align:left; color:var(--ink-soft); font-weight:500; font-size:0.72rem; text-transform:uppercase; letter-spacing:.03em; padding:5px 6px; border-bottom:1px solid var(--line); }
+  .hist-table td{ padding:6px; border-bottom:1px solid var(--line); }
+  .hist-table tr:last-child td{ border-bottom:none; }
 
   /* ---------- add card ---------- */
   .addcard{
@@ -333,11 +375,6 @@
     </div>
   </div>
 
-  <div class="fxbar">
-    <span>Dólar de referencia este mes (para propiedades en pesos):</span>
-    <div class="cur"><span>$</span><input type="number" min="0" step="1" id="dolarInput" /><span>por US$ 1</span></div>
-  </div>
-
   <div class="stats">
     <div class="stat accent">
       <div class="label">Cobrado este mes</div>
@@ -366,6 +403,16 @@
   <div class="grid" id="propsGrid"></div>
 </div>
 
+<div class="modal-overlay" id="histModal" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="histTitle">Historial</h3>
+      <button class="del-btn" type="button" id="histClose">✕</button>
+    </div>
+    <div id="histBody"><p>Cargando…</p></div>
+  </div>
+</div>
+
 <script>
 (function(){
   "use strict";
@@ -390,16 +437,24 @@
   ];
   var MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
-  var properties = [];        // {id, nombre, direccion, inquilino, email, contratoHasta, orden, moneda}
+  var properties = [];        // {id, nombre, direccion, inquilino, email, contratoHasta, orden, moneda,
+                               //  tipoAlquiler, valorPactado, ajusteFrecuencia, ajusteTipo, ajustePorcentaje, ultimoAjusteMes}
   var cardEls = {};            // id -> card element
   var recordsByProp = {};      // id -> record object for current month
   var lastKnownAlquiler = {};  // id -> last non-zero alquiler seen (for placeholder hint)
   var currentMonth = monthKey(new Date());
   var recordTimers = {};       // propId -> timeout
-  var metaTimers = {};         // propId -> timeout
-  var dolarMes = 0;            // tipo de cambio compartido del mes actual
-  var lastKnownDolar = 0;
-  var dolarTimerMap = {};
+  var metaTimers = {};         // propId::field -> timeout
+
+  var FIELD_TO_COLUMN = {
+    contratoHasta: "contrato_hasta",
+    tipoAlquiler: "tipo_alquiler",
+    valorPactado: "valor_pactado",
+    ajusteFrecuencia: "ajuste_frecuencia",
+    ajusteTipo: "ajuste_tipo",
+    ajustePorcentaje: "ajuste_porcentaje",
+    ultimoAjusteMes: "ultimo_ajuste_mes"
+  };
 
   var grid = document.getElementById("propsGrid");
   var emptyState = document.getElementById("emptyState");
@@ -416,6 +471,7 @@
     var d = new Date(y, m + delta, 1);
     return monthKey(d);
   }
+  function addMonthsToKey(key, n){ return shiftMonth(key, n); }
   function labelForMonth(key){
     var parts = key.split("-");
     var m = parseInt(parts[1],10) - 1;
@@ -449,7 +505,7 @@
     return o;
   }
   function defaultRecord(){
-    return { alquiler:0, servicios: defaultServicios(), expensasExtra:0, arreglos:0, modoPago:"transferencia" };
+    return { alquiler:0, servicios: defaultServicios(), expensasExtra:0, arreglos:0, modoPago:"transferencia", tipoCambioPago:0 };
   }
   function normalizeRecord(data){
     var r = defaultRecord();
@@ -458,6 +514,7 @@
     r.expensasExtra = Number(data.expensasExtra) || 0;
     r.arreglos = Number(data.arreglos) || 0;
     r.modoPago = data.modoPago === "efectivo" ? "efectivo" : "transferencia";
+    r.tipoCambioPago = Number(data.tipoCambioPago) || 0;
     var svc = data.servicios || {};
     SERVICIOS.forEach(function(s){
       var v = svc[s.key] || {};
@@ -493,7 +550,13 @@
       email: row.email || "",
       contratoHasta: row.contrato_hasta || "",
       orden: typeof row.orden === "number" ? row.orden : 0,
-      moneda: row.moneda === "USD" ? "USD" : "ARS"
+      moneda: row.moneda === "USD" ? "USD" : "ARS",
+      tipoAlquiler: row.tipo_alquiler || "",
+      valorPactado: Number(row.valor_pactado) || 0,
+      ajusteFrecuencia: parseInt(row.ajuste_frecuencia,10) || 12,
+      ajusteTipo: row.ajuste_tipo === "ipc" ? "ipc" : "porcentaje",
+      ajustePorcentaje: Number(row.ajuste_porcentaje) || 0,
+      ultimoAjusteMes: row.ultimo_ajuste_mes || ""
     };
   }
   function rowToRecord(row){
@@ -502,7 +565,8 @@
       servicios: row.servicios,
       expensasExtra: row.expensas_extra,
       arreglos: row.arreglos,
-      modoPago: row.modo_pago
+      modoPago: row.modo_pago,
+      tipoCambioPago: row.tipo_cambio_pago
     });
   }
   function recordDocId(propId, mes){ return propId + "_" + mes; }
@@ -535,6 +599,36 @@
         '<button type="button" class="no">No</button>' +
         '<button type="button" class="yes">Sí, eliminar</button>' +
       '</div>' +
+      '<details class="contract-panel">' +
+        '<summary>Contrato y ajuste <span class="nextadj-pill" data-role="nextadjpill" hidden></span></summary>' +
+        '<div class="cpanel-body">' +
+          '<label class="cfield">Tipo de alquiler / contrato<input type="text" data-field="tipoAlquiler" placeholder="Ej: Vivienda, Comercial, Ley 27.551…"/></label>' +
+          '<div class="ajuste-row"><label>Valor pactado</label><div class="cur"><span class="cursym">$</span><input type="number" min="0" step="1" class="money-input small" data-role="valorPactado"/></div></div>' +
+          '<div class="ajuste-row"><label>Frecuencia de ajuste</label>' +
+            '<select data-field="ajusteFrecuencia">' +
+              '<option value="1">Mensual</option>' +
+              '<option value="3">Cada 3 meses</option>' +
+              '<option value="4">Cada 4 meses</option>' +
+              '<option value="6">Cada 6 meses</option>' +
+              '<option value="12">Anual</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="ajuste-row"><label>Referencia del ajuste</label>' +
+            '<select data-field="ajusteTipo">' +
+              '<option value="ipc">IPC (índice)</option>' +
+              '<option value="porcentaje">Porcentaje fijo</option>' +
+            '</select>' +
+          '</div>' +
+          '<div data-role="pctWrap"><div class="ajuste-row"><label>Porcentaje de ajuste (%)</label><input type="number" step="0.01" class="ded-input" style="color:var(--accent)" data-field="ajustePorcentaje"/></div></div>' +
+          '<div data-role="ipcWrap">' +
+            '<div class="ajuste-row"><label>IPC mes de alquiler (índice)</label><input type="number" step="0.01" class="ded-input" style="color:var(--accent)" data-role="ipcBase"/></div>' +
+            '<div class="ajuste-row"><label>IPC mes de actualización (índice)</label><input type="number" step="0.01" class="ded-input" style="color:var(--accent)" data-role="ipcActual"/></div>' +
+            '<div class="ipc-hint">Usá el mismo tipo de valor en los dos (el índice INDEC de cada mes, o el acumulado): el sistema multiplica el valor pactado por la razón entre ambos.</div>' +
+          '</div>' +
+          '<button type="button" class="btn primary small" data-role="aplicarAjuste">Aplicar ajuste al valor pactado</button>' +
+          '<div class="ajuste-note">Al aplicar, se actualiza el "valor pactado" como referencia. El alquiler cobrado cada mes lo seguís cargando abajo, mes a mes.</div>' +
+        '</div>' +
+      '</details>' +
       '<div class="rentrow">' +
         '<div class="rentmeta">' +
           '<label>Alquiler cobrado</label>' +
@@ -552,6 +646,8 @@
           '<option value="efectivo">Efectivo</option>' +
         '</select>' +
       '</div>' +
+      '<div class="ded-row" data-role="tcRow"><label>Tipo de cambio al momento del pago</label><div class="cur"><span>$</span><input type="number" min="0" step="1" class="ded-input" style="color:var(--ink)" data-role="tipoCambioPago"/></div></div>' +
+      '<button type="button" class="linkbtn" data-role="verHistorial">Ver historial de cobros y tipo de cambio →</button>' +
       '<div class="services"></div>' +
       '<div class="deductions">' +
         '<div class="ded-row"><label>Expensas extraordinarias (te descuentan)</label><div class="cur"><span class="cursym">$</span><input type="number" min="0" step="1" class="ded-input" data-role="expensasExtra"/></div></div>' +
@@ -574,7 +670,7 @@
       svcWrap.appendChild(tile);
     });
 
-    ["nombre","direccion","inquilino","email","contratoHasta"].forEach(function(field){
+    ["nombre","direccion","inquilino","email","contratoHasta","tipoAlquiler"].forEach(function(field){
       var input = card.querySelector('[data-field="' + field + '"]');
       input.addEventListener("input", function(){
         var p = properties.find(function(x){ return x.id === prop.id; });
@@ -595,6 +691,84 @@
     var modoPagoSel = card.querySelector('[data-role="modoPago"]');
     modoPagoSel.addEventListener("change", function(){
       updateRecordField(prop.id, function(r){ r.modoPago = modoPagoSel.value; });
+    });
+
+    var tcInput = card.querySelector('[data-role="tipoCambioPago"]');
+    tcInput.addEventListener("input", function(){
+      updateRecordField(prop.id, function(r){ r.tipoCambioPago = Number(tcInput.value) || 0; });
+    });
+
+    var histBtn = card.querySelector('[data-role="verHistorial"]');
+    histBtn.addEventListener("click", function(){ openHistorial(prop.id); });
+
+    var valorPactadoInput = card.querySelector('[data-role="valorPactado"]');
+    valorPactadoInput.addEventListener("input", function(){
+      var p = properties.find(function(x){ return x.id === prop.id; });
+      var v = Number(valorPactadoInput.value) || 0;
+      if(p) p.valorPactado = v;
+      scheduleMetaSave(prop.id, "valorPactado", v);
+    });
+
+    var freqSel = card.querySelector('[data-field="ajusteFrecuencia"]');
+    freqSel.addEventListener("change", function(){
+      var p = properties.find(function(x){ return x.id === prop.id; });
+      var v = parseInt(freqSel.value,10) || 12;
+      if(p) p.ajusteFrecuencia = v;
+      scheduleMetaSave(prop.id, "ajusteFrecuencia", v);
+      if(p) updateNextAdjPill(p);
+    });
+
+    var ajusteTipoSel = card.querySelector('[data-field="ajusteTipo"]');
+    ajusteTipoSel.addEventListener("change", function(){
+      var p = properties.find(function(x){ return x.id === prop.id; });
+      if(p) p.ajusteTipo = ajusteTipoSel.value;
+      scheduleMetaSave(prop.id, "ajusteTipo", ajusteTipoSel.value);
+      updateAjusteVisibility(p || prop);
+    });
+
+    var ajustePctInput = card.querySelector('[data-field="ajustePorcentaje"]');
+    ajustePctInput.addEventListener("input", function(){
+      var p = properties.find(function(x){ return x.id === prop.id; });
+      var v = Number(ajustePctInput.value) || 0;
+      if(p) p.ajustePorcentaje = v;
+      scheduleMetaSave(prop.id, "ajustePorcentaje", v);
+    });
+
+    var aplicarBtn = card.querySelector('[data-role="aplicarAjuste"]');
+    aplicarBtn.addEventListener("click", function(){
+      var p = properties.find(function(x){ return x.id === prop.id; });
+      if(!p) return;
+      var actual = p.valorPactado || 0;
+      var nuevo = actual;
+      if(p.ajusteTipo === "ipc"){
+        var base = Number(card.querySelector('[data-role="ipcBase"]').value) || 0;
+        var act = Number(card.querySelector('[data-role="ipcActual"]').value) || 0;
+        if(base <= 0 || act <= 0){
+          alert("Ingresá los dos valores de IPC (mes de alquiler y mes de actualización) para calcular el ajuste.");
+          return;
+        }
+        nuevo = actual * (act / base);
+      } else {
+        nuevo = actual * (1 + (p.ajustePorcentaje || 0) / 100);
+      }
+      nuevo = Math.round(nuevo * 100) / 100;
+      var ok = confirm("Nuevo valor pactado: " + fmtMoney(nuevo, p.moneda) + " (antes " + fmtMoney(actual, p.moneda) + "). ¿Aplicar?");
+      if(!ok) return;
+      p.valorPactado = nuevo;
+      p.ultimoAjusteMes = currentMonth;
+      var vpInput = card.querySelector('[data-role="valorPactado"]');
+      if(vpInput) vpInput.value = nuevo;
+      card.querySelector('[data-role="ipcBase"]').value = "";
+      card.querySelector('[data-role="ipcActual"]').value = "";
+      updateNextAdjPill(p);
+      if(!sb){ setStatus("offline"); return; }
+      setStatus("saving");
+      sb.from("alquileres_propiedades").update({
+        valor_pactado: nuevo,
+        ultimo_ajuste_mes: currentMonth
+      }).eq("id", prop.id).then(function(res){
+        setStatus(res.error ? "offline" : "online");
+      });
     });
 
     card.querySelector(".del-btn").addEventListener("click", function(){
@@ -645,15 +819,87 @@
     card.querySelectorAll(".cursym").forEach(function(el){ el.textContent = symbol; });
     var sel = card.querySelector('[data-field="moneda"]');
     if(sel && !isFocused(sel)) sel.value = prop.moneda === "USD" ? "USD" : "ARS";
+    var tcRow = card.querySelector('[data-role="tcRow"]');
+    if(tcRow) tcRow.hidden = prop.moneda === "USD";
   }
+
+  function updateAjusteVisibility(prop){
+    var card = cardEls[prop.id];
+    if(!card) return;
+    var pctWrap = card.querySelector('[data-role="pctWrap"]');
+    var ipcWrap = card.querySelector('[data-role="ipcWrap"]');
+    var isIpc = prop.ajusteTipo === "ipc";
+    if(pctWrap) pctWrap.hidden = isIpc;
+    if(ipcWrap) ipcWrap.hidden = !isIpc;
+  }
+
+  function updateNextAdjPill(prop){
+    var card = cardEls[prop.id];
+    if(!card) return;
+    var pill = card.querySelector('[data-role="nextadjpill"]');
+    if(!pill) return;
+    if(!prop.ultimoAjusteMes || !prop.ajusteFrecuencia){
+      pill.hidden = true;
+      return;
+    }
+    var nextKey = addMonthsToKey(prop.ultimoAjusteMes, prop.ajusteFrecuencia);
+    pill.hidden = false;
+    var overdue = nextKey <= currentMonth;
+    pill.textContent = (overdue ? "Ajuste pendiente: " : "Próximo ajuste: ") + labelForMonth(nextKey);
+    pill.className = "nextadj-pill" + (overdue ? " bad" : "");
+  }
+
+  function openHistorial(propId){
+    var prop = properties.find(function(x){ return x.id === propId; });
+    var modal = document.getElementById("histModal");
+    var body = document.getElementById("histBody");
+    document.getElementById("histTitle").textContent = "Historial — " + ((prop && prop.nombre) || "Propiedad");
+    body.innerHTML = "<p>Cargando…</p>";
+    modal.hidden = false;
+    if(!sb || !prop){ body.innerHTML = "<p>No se pudo conectar con la base de datos.</p>"; return; }
+    sb.from("alquileres_registros").select("*").eq("propiedad_id", propId).order("mes", {ascending:false}).then(function(res){
+      if(res.error || !res.data || !res.data.length){
+        body.innerHTML = "<p>Todavía no hay cobros registrados para esta propiedad.</p>";
+        return;
+      }
+      var moneda = prop.moneda === "USD" ? "USD" : "ARS";
+      var rows = res.data.map(function(row){
+        var r = rowToRecord(row);
+        var tc = r.tipoCambioPago || 0;
+        var usdEq = moneda === "ARS" ? (tc > 0 ? (r.alquiler / tc) : null) : r.alquiler;
+        return '<tr><td>' + labelForMonth(row.mes) + '</td><td class="mono">' + fmtMoney(r.alquiler, moneda) +
+          '</td><td class="mono">' + (moneda === "ARS" ? (tc > 0 ? ("$ " + tc) : "—") : "—") +
+          '</td><td class="mono">' + (usdEq !== null ? fmtMoney(usdEq, "USD") : "—") + '</td></tr>';
+      }).join("");
+      body.innerHTML =
+        '<table class="hist-table"><thead><tr><th>Mes</th><th>Alquiler</th><th>T. cambio</th><th>Equiv. US$</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    });
+  }
+
+  document.getElementById("histClose").addEventListener("click", function(){
+    document.getElementById("histModal").hidden = true;
+  });
+  document.getElementById("histModal").addEventListener("click", function(e){
+    if(e.target.id === "histModal") e.currentTarget.hidden = true;
+  });
 
   function updateCardMeta(prop){
     var card = cardEls[prop.id];
     if(!card) return;
-    ["nombre","direccion","inquilino","email","contratoHasta"].forEach(function(field){
+    ["nombre","direccion","inquilino","email","contratoHasta","tipoAlquiler"].forEach(function(field){
       var input = card.querySelector('[data-field="' + field + '"]');
       if(!isFocused(input)) input.value = prop[field] || "";
     });
+    var vpInput = card.querySelector('[data-role="valorPactado"]');
+    if(vpInput && !isFocused(vpInput)) vpInput.value = prop.valorPactado || "";
+    var freqSel = card.querySelector('[data-field="ajusteFrecuencia"]');
+    if(freqSel && !isFocused(freqSel)) freqSel.value = String(prop.ajusteFrecuencia || 12);
+    var ajusteTipoSel = card.querySelector('[data-field="ajusteTipo"]');
+    if(ajusteTipoSel && !isFocused(ajusteTipoSel)) ajusteTipoSel.value = prop.ajusteTipo || "porcentaje";
+    var ajustePctInput = card.querySelector('[data-field="ajustePorcentaje"]');
+    if(ajustePctInput && !isFocused(ajustePctInput)) ajustePctInput.value = prop.ajustePorcentaje || "";
+    updateAjusteVisibility(prop);
+    updateNextAdjPill(prop);
     updateCardCurrency(prop);
     updateCardRecord(prop.id);
     var pill = card.querySelector('[data-role="duepill"]');
@@ -687,7 +933,8 @@
     var alquilerInput = card.querySelector('[data-role="alquiler"]');
     if(!isFocused(alquilerInput)){
       alquilerInput.value = r.alquiler || "";
-      alquilerInput.placeholder = r.alquiler ? "" : (lastKnownAlquiler[propId] ? String(lastKnownAlquiler[propId]) : "0");
+      var fallback = lastKnownAlquiler[propId] || prop.valorPactado || 0;
+      alquilerInput.placeholder = r.alquiler ? "" : (fallback ? String(fallback) : "0");
     }
     if(r.alquiler > 0) lastKnownAlquiler[propId] = r.alquiler;
 
@@ -697,6 +944,8 @@
     if(!isFocused(arrInput)) arrInput.value = r.arreglos || "";
     var modoPagoSel = card.querySelector('[data-role="modoPago"]');
     if(modoPagoSel && !isFocused(modoPagoSel)) modoPagoSel.value = r.modoPago || "transferencia";
+    var tcInput = card.querySelector('[data-role="tipoCambioPago"]');
+    if(tcInput && !isFocused(tcInput)) tcInput.value = r.tipoCambioPago || "";
 
     var descuentoServicios = 0;
     SERVICIOS.forEach(function(s){
@@ -721,9 +970,9 @@
 
     var fx = card.querySelector('[data-role="fxhint"]');
     if(fx){
-      if(moneda === "ARS" && dolarMes > 0 && r.alquiler > 0){
+      if(moneda === "ARS" && r.tipoCambioPago > 0 && r.alquiler > 0){
         fx.hidden = false;
-        fx.textContent = "≈ " + fmtMoney(r.alquiler / dolarMes, "USD") + " al dólar de referencia ($ " + dolarMes + ")";
+        fx.textContent = "≈ " + fmtMoney(r.alquiler / r.tipoCambioPago, "USD") + " al tipo de cambio del pago ($ " + r.tipoCambioPago + ")";
       } else {
         fx.hidden = true;
       }
@@ -763,50 +1012,13 @@
     document.getElementById("statPendientes").textContent = properties.length ? (pendientes + " / " + (properties.length * SERVICIOS.length)) : "0";
   }
 
-  // ---------- tipo de cambio compartido ----------
-
-  function refreshAllCurrencyDependent(){
-    properties.forEach(function(p){ updateCardRecord(p.id); });
-    recomputeStats();
-  }
-
-  function loadDolar(){
-    var input = document.getElementById("dolarInput");
-    if(!sb){ return Promise.resolve(); }
-    return sb.from("alquileres_tipo_cambio").select("dolar").eq("mes", currentMonth).maybeSingle().then(function(res){
-      dolarMes = (!res.error && res.data) ? (Number(res.data.dolar) || 0) : 0;
-      if(dolarMes > 0) lastKnownDolar = dolarMes;
-      if(input && !isFocused(input)){
-        input.value = dolarMes || "";
-        input.placeholder = dolarMes ? "" : (lastKnownDolar ? String(lastKnownDolar) : "");
-      }
-      refreshAllCurrencyDependent();
-    });
-  }
-
-  function saveDolar(value){
-    dolarMes = value;
-    refreshAllCurrencyDependent();
-    if(!sb){ setStatus("offline"); return; }
-    debounce(dolarTimerMap, "dolar", function(){
-      setStatus("saving");
-      sb.from("alquileres_tipo_cambio").upsert({mes: currentMonth, dolar: dolarMes}).then(function(res){
-        setStatus(res.error ? "offline" : "online");
-      });
-    }, 550);
-  }
-
-  document.getElementById("dolarInput").addEventListener("input", function(e){
-    saveDolar(Number(e.target.value) || 0);
-  });
-
   // ---------- persistence (Supabase) ----------
 
   function scheduleMetaSave(propId, field, value){
     if(!sb) { setStatus("offline"); return; }
-    debounce(metaTimers, propId, function(){
-      var column = field === "contratoHasta" ? "contrato_hasta" : field;
-      var body = {}; body[column] = value || null;
+    debounce(metaTimers, propId + "::" + field, function(){
+      var column = FIELD_TO_COLUMN[field] || field;
+      var body = {}; body[column] = (value === "" || value === null || value === undefined) ? null : value;
       setStatus("saving");
       sb.from("alquileres_propiedades").update(body).eq("id", propId).then(function(res){
         setStatus(res.error ? "offline" : "online");
@@ -832,7 +1044,8 @@
         servicios: r.servicios,
         expensas_extra: r.expensasExtra,
         arreglos: r.arreglos,
-        modo_pago: r.modoPago
+        modo_pago: r.modoPago,
+        tipo_cambio_pago: r.tipoCambioPago
       };
       sb.from("alquileres_registros").upsert(row).then(function(res){
         setStatus(res.error ? "offline" : "online");
@@ -866,7 +1079,11 @@
       email: data.email,
       contrato_hasta: data.contratoHasta || null,
       orden: Date.now(),
-      moneda: data.moneda || "ARS"
+      moneda: data.moneda || "ARS",
+      ajuste_frecuencia: 12,
+      ajuste_tipo: "porcentaje",
+      ajuste_porcentaje: 0,
+      valor_pactado: 0
     }).select().single().then(function(res){
       if(res.error || !res.data){ setStatus("offline"); return; }
       var prop = rowToProp(res.data);
@@ -961,11 +1178,14 @@
   function goToMonth(key){
     currentMonth = key;
     monthLabel.textContent = labelForMonth(currentMonth);
-    properties.forEach(function(p){ recordsByProp[p.id] = defaultRecord(); updateCardRecord(p.id); });
-    dolarMes = 0;
+    properties.forEach(function(p){
+      recordsByProp[p.id] = defaultRecord();
+      updateCardRecord(p.id);
+      updateNextAdjPill(p);
+    });
     recomputeStats();
     setStatus("saving");
-    Promise.all([loadRecords(), loadDolar()]).then(function(){ setStatus("online"); });
+    loadRecords().then(function(){ setStatus("online"); });
   }
 
   document.getElementById("prevMonth").addEventListener("click", function(){ goToMonth(shiftMonth(currentMonth,-1)); });
@@ -981,7 +1201,7 @@
       setStatus("offline");
     } else {
       setStatus("saving");
-      loadProperties().then(loadRecords).then(loadDolar).then(function(){
+      loadProperties().then(loadRecords).then(function(){
         setStatus("online");
       }).catch(function(){
         setStatus("offline");
