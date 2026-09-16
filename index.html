@@ -217,6 +217,34 @@
   .netorow .nval.neg{ color:var(--bad); }
   .netorow .nval.pos{ color:var(--good); }
 
+  .rentmeta{ display:flex; flex-direction:column; gap:3px; }
+  .moneda-select{
+    border:1px solid var(--line); background:var(--surface); border-radius:6px;
+    font-size:0.72rem; padding:2px 4px; color:var(--ink-soft); width:fit-content;
+  }
+  .fxhint{ font-size:0.74rem; color:var(--ink-soft); padding:0 2px; }
+
+  .fxbar{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:8px 14px; box-shadow:var(--shadow); margin-bottom:16px; font-size:0.82rem; color:var(--ink-soft);
+  }
+  .fxbar .cur{ display:flex; align-items:center; gap:4px; }
+  .fxbar input{
+    border:none; border-bottom:1px solid var(--line); background:transparent;
+    font-family:"IBM Plex Mono", monospace; font-size:0.9rem; width:110px; color:var(--accent); font-weight:600;
+  }
+  .fxbar input:focus{ outline:none; border-bottom-color:var(--accent); }
+
+  .svc-who{
+    border:1px solid var(--line); background:var(--surface); border-radius:6px;
+    font-size:0.7rem; padding:3px 4px; color:var(--ink-soft); width:100%;
+  }
+  .ownertag{
+    margin-left:auto; font-size:0.62rem; background:var(--warn-soft); color:var(--warn);
+    padding:2px 7px; border-radius:999px; font-weight:500;
+  }
+
   /* ---------- add card ---------- */
   .addcard{
     border:1.5px dashed var(--line); border-radius:16px; display:flex; align-items:center;
@@ -305,6 +333,11 @@
     </div>
   </div>
 
+  <div class="fxbar">
+    <span>Dólar de referencia este mes (para propiedades en pesos):</span>
+    <div class="cur"><span>$</span><input type="number" min="0" step="1" id="dolarInput" /><span>por US$ 1</span></div>
+  </div>
+
   <div class="stats">
     <div class="stat accent">
       <div class="label">Cobrado este mes</div>
@@ -351,17 +384,22 @@
     {key:"agua", name:"Agua"},
     {key:"luz", name:"Luz"},
     {key:"gas", name:"Gas"},
-    {key:"expensas", name:"Expensas"}
+    {key:"expensas", name:"Expensas"},
+    {key:"abl", name:"ABL"},
+    {key:"arba", name:"ARBA"}
   ];
   var MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
-  var properties = [];        // {id, nombre, direccion, inquilino, contratoHasta, orden}
+  var properties = [];        // {id, nombre, direccion, inquilino, email, contratoHasta, orden, moneda}
   var cardEls = {};            // id -> card element
   var recordsByProp = {};      // id -> record object for current month
   var lastKnownAlquiler = {};  // id -> last non-zero alquiler seen (for placeholder hint)
   var currentMonth = monthKey(new Date());
   var recordTimers = {};       // propId -> timeout
   var metaTimers = {};         // propId -> timeout
+  var dolarMes = 0;            // tipo de cambio compartido del mes actual
+  var lastKnownDolar = 0;
+  var dolarTimerMap = {};
 
   var grid = document.getElementById("propsGrid");
   var emptyState = document.getElementById("emptyState");
@@ -384,13 +422,19 @@
     var name = MESES[m] || "";
     return name.charAt(0).toUpperCase() + name.slice(1) + " " + parts[0];
   }
-  function fmtMoney(n){
+  function fmtMoney(n, moneda){
     n = Number(n) || 0;
+    var symbol = moneda === "USD" ? "US$" : "$";
     try{
-      return new Intl.NumberFormat("es-AR", {style:"currency", currency:"ARS", maximumFractionDigits:0}).format(n);
+      return symbol + " " + new Intl.NumberFormat("es-AR", {maximumFractionDigits:0}).format(Math.round(n));
     }catch(e){
-      return "$ " + Math.round(n).toString();
+      return symbol + " " + Math.round(n).toString();
     }
+  }
+  function formatDual(ars, usd, hasARS, hasUSD){
+    if(hasARS && hasUSD) return fmtMoney(ars, "ARS") + "  +  " + fmtMoney(usd, "USD");
+    if(hasUSD && !hasARS) return fmtMoney(usd, "USD");
+    return fmtMoney(ars, "ARS");
   }
   function fmtDate(iso){
     if(!iso) return "";
@@ -401,11 +445,11 @@
   }
   function defaultServicios(){
     var o = {};
-    SERVICIOS.forEach(function(s){ o[s.key] = {pagado:false, valor:0}; });
+    SERVICIOS.forEach(function(s){ o[s.key] = {pagado:false, valor:0, pagadoPor:"inquilino"}; });
     return o;
   }
   function defaultRecord(){
-    return { alquiler:0, servicios: defaultServicios(), expensasExtra:0, arreglos:0 };
+    return { alquiler:0, servicios: defaultServicios(), expensasExtra:0, arreglos:0, modoPago:"transferencia" };
   }
   function normalizeRecord(data){
     var r = defaultRecord();
@@ -413,10 +457,15 @@
     r.alquiler = Number(data.alquiler) || 0;
     r.expensasExtra = Number(data.expensasExtra) || 0;
     r.arreglos = Number(data.arreglos) || 0;
+    r.modoPago = data.modoPago === "efectivo" ? "efectivo" : "transferencia";
     var svc = data.servicios || {};
     SERVICIOS.forEach(function(s){
       var v = svc[s.key] || {};
-      r.servicios[s.key] = { pagado: !!v.pagado, valor: Number(v.valor) || 0 };
+      r.servicios[s.key] = {
+        pagado: !!v.pagado,
+        valor: Number(v.valor) || 0,
+        pagadoPor: v.pagadoPor === "propietario" ? "propietario" : "inquilino"
+      };
     });
     return r;
   }
@@ -441,8 +490,10 @@
       nombre: row.nombre || "",
       direccion: row.direccion || "",
       inquilino: row.inquilino || "",
+      email: row.email || "",
       contratoHasta: row.contrato_hasta || "",
-      orden: typeof row.orden === "number" ? row.orden : 0
+      orden: typeof row.orden === "number" ? row.orden : 0,
+      moneda: row.moneda === "USD" ? "USD" : "ARS"
     };
   }
   function rowToRecord(row){
@@ -450,7 +501,8 @@
       alquiler: row.alquiler,
       servicios: row.servicios,
       expensasExtra: row.expensas_extra,
-      arreglos: row.arreglos
+      arreglos: row.arreglos,
+      modoPago: row.modo_pago
     });
   }
   function recordDocId(propId, mes){ return propId + "_" + mes; }
@@ -469,6 +521,8 @@
           '<input class="field-text sub-field" data-field="direccion" placeholder="Dirección" />' +
           '<div class="tenant-row"><span class="tlabel">Inquilino:</span>' +
             '<input class="field-text sub-field" data-field="inquilino" placeholder="Nombre del inquilino" style="flex:1"/></div>' +
+          '<div class="tenant-row"><span class="tlabel">Email:</span>' +
+            '<input class="field-text sub-field" data-field="email" placeholder="Email de contacto" style="flex:1" type="email"/></div>' +
         '</div>' +
         '<button class="del-btn" type="button" title="Eliminar propiedad">✕</button>' +
       '</div>' +
@@ -482,13 +536,26 @@
         '<button type="button" class="yes">Sí, eliminar</button>' +
       '</div>' +
       '<div class="rentrow">' +
-        '<label>Alquiler cobrado</label>' +
-        '<div class="cur"><span>$</span><input type="number" min="0" step="1" class="money-input" data-role="alquiler" /></div>' +
+        '<div class="rentmeta">' +
+          '<label>Alquiler cobrado</label>' +
+          '<select class="moneda-select" data-field="moneda">' +
+            '<option value="ARS">Pesos (ARS)</option>' +
+            '<option value="USD">Dólares (USD)</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="cur"><span class="cursym">$</span><input type="number" min="0" step="1" class="money-input" data-role="alquiler" /></div>' +
+      '</div>' +
+      '<div class="fxhint" data-role="fxhint" hidden></div>' +
+      '<div class="ded-row"><label>Modo de pago</label>' +
+        '<select class="svc-who" style="width:auto" data-role="modoPago">' +
+          '<option value="transferencia">Transferencia</option>' +
+          '<option value="efectivo">Efectivo</option>' +
+        '</select>' +
       '</div>' +
       '<div class="services"></div>' +
       '<div class="deductions">' +
-        '<div class="ded-row"><label>Expensas extraordinarias (te descuentan)</label><div class="cur"><span>$</span><input type="number" min="0" step="1" class="ded-input" data-role="expensasExtra"/></div></div>' +
-        '<div class="ded-row"><label>Arreglos (te descuentan)</label><div class="cur"><span>$</span><input type="number" min="0" step="1" class="ded-input" data-role="arreglos"/></div></div>' +
+        '<div class="ded-row"><label>Expensas extraordinarias (te descuentan)</label><div class="cur"><span class="cursym">$</span><input type="number" min="0" step="1" class="ded-input" data-role="expensasExtra"/></div></div>' +
+        '<div class="ded-row"><label>Arreglos (te descuentan)</label><div class="cur"><span class="cursym">$</span><input type="number" min="0" step="1" class="ded-input" data-role="arreglos"/></div></div>' +
         '<div class="netorow"><span class="nlabel">Neto a tu favor</span><span class="nval mono" data-role="neto">$ 0</span></div>' +
       '</div>';
 
@@ -498,12 +565,16 @@
       tile.className = "svc";
       tile.dataset.svc = s.key;
       tile.innerHTML =
-        '<div class="svctop"><input type="checkbox" data-svc-paid="' + s.key + '"/><span class="svcname">' + s.name + '</span></div>' +
-        '<div class="svcval"><span>$</span><input type="number" min="0" step="1" class="svc-input" data-svc-val="' + s.key + '"/></div>';
+        '<div class="svctop"><input type="checkbox" data-svc-paid="' + s.key + '"/><span class="svcname">' + s.name + '</span><span class="ownertag" data-role="ownertag" hidden>vos</span></div>' +
+        '<div class="svcval"><span class="cursym">$</span><input type="number" min="0" step="1" class="svc-input" data-svc-val="' + s.key + '"/></div>' +
+        '<select class="svc-who" data-svc-who="' + s.key + '">' +
+          '<option value="inquilino">Paga inquilino</option>' +
+          '<option value="propietario">Pagás vos</option>' +
+        '</select>';
       svcWrap.appendChild(tile);
     });
 
-    ["nombre","direccion","inquilino","contratoHasta"].forEach(function(field){
+    ["nombre","direccion","inquilino","email","contratoHasta"].forEach(function(field){
       var input = card.querySelector('[data-field="' + field + '"]');
       input.addEventListener("input", function(){
         var p = properties.find(function(x){ return x.id === prop.id; });
@@ -511,6 +582,19 @@
         scheduleMetaSave(prop.id, field, input.value);
         if(field === "contratoHasta") updateCardMeta(p || prop);
       });
+    });
+
+    var monedaSel = card.querySelector('[data-field="moneda"]');
+    monedaSel.addEventListener("change", function(){
+      var p = properties.find(function(x){ return x.id === prop.id; });
+      if(p) p.moneda = monedaSel.value;
+      scheduleMetaSave(prop.id, "moneda", monedaSel.value);
+      updateCardMeta(p || prop);
+    });
+
+    var modoPagoSel = card.querySelector('[data-role="modoPago"]');
+    modoPagoSel.addEventListener("change", function(){
+      updateRecordField(prop.id, function(r){ r.modoPago = modoPagoSel.value; });
     });
 
     card.querySelector(".del-btn").addEventListener("click", function(){
@@ -538,11 +622,15 @@
     SERVICIOS.forEach(function(s){
       var cb = card.querySelector('[data-svc-paid="' + s.key + '"]');
       var val = card.querySelector('[data-svc-val="' + s.key + '"]');
+      var who = card.querySelector('[data-svc-who="' + s.key + '"]');
       cb.addEventListener("change", function(){
         updateRecordField(prop.id, function(r){ r.servicios[s.key].pagado = cb.checked; });
       });
       val.addEventListener("input", function(){
         updateRecordField(prop.id, function(r){ r.servicios[s.key].valor = Number(val.value) || 0; });
+      });
+      who.addEventListener("change", function(){
+        updateRecordField(prop.id, function(r){ r.servicios[s.key].pagadoPor = who.value; });
       });
     });
 
@@ -550,13 +638,24 @@
     return card;
   }
 
+  function updateCardCurrency(prop){
+    var card = cardEls[prop.id];
+    if(!card) return;
+    var symbol = prop.moneda === "USD" ? "US$" : "$";
+    card.querySelectorAll(".cursym").forEach(function(el){ el.textContent = symbol; });
+    var sel = card.querySelector('[data-field="moneda"]');
+    if(sel && !isFocused(sel)) sel.value = prop.moneda === "USD" ? "USD" : "ARS";
+  }
+
   function updateCardMeta(prop){
     var card = cardEls[prop.id];
     if(!card) return;
-    ["nombre","direccion","inquilino","contratoHasta"].forEach(function(field){
+    ["nombre","direccion","inquilino","email","contratoHasta"].forEach(function(field){
       var input = card.querySelector('[data-field="' + field + '"]');
       if(!isFocused(input)) input.value = prop[field] || "";
     });
+    updateCardCurrency(prop);
+    updateCardRecord(prop.id);
     var pill = card.querySelector('[data-role="duepill"]');
     if(!prop.contratoHasta){
       pill.textContent = "Sin vencimiento";
@@ -582,6 +681,8 @@
     var card = cardEls[propId];
     if(!card) return;
     var r = recordsByProp[propId] || defaultRecord();
+    var prop = properties.find(function(x){ return x.id === propId; }) || {moneda:"ARS"};
+    var moneda = prop.moneda === "USD" ? "USD" : "ARS";
 
     var alquilerInput = card.querySelector('[data-role="alquiler"]');
     if(!isFocused(alquilerInput)){
@@ -594,21 +695,39 @@
     if(!isFocused(expInput)) expInput.value = r.expensasExtra || "";
     var arrInput = card.querySelector('[data-role="arreglos"]');
     if(!isFocused(arrInput)) arrInput.value = r.arreglos || "";
+    var modoPagoSel = card.querySelector('[data-role="modoPago"]');
+    if(modoPagoSel && !isFocused(modoPagoSel)) modoPagoSel.value = r.modoPago || "transferencia";
 
+    var descuentoServicios = 0;
     SERVICIOS.forEach(function(s){
       var cb = card.querySelector('[data-svc-paid="' + s.key + '"]');
       var val = card.querySelector('[data-svc-val="' + s.key + '"]');
-      var sv = r.servicios[s.key] || {pagado:false, valor:0};
+      var who = card.querySelector('[data-svc-who="' + s.key + '"]');
+      var tag = card.querySelector('.svc[data-svc="' + s.key + '"] [data-role="ownertag"]');
+      var sv = r.servicios[s.key] || {pagado:false, valor:0, pagadoPor:"inquilino"};
       cb.checked = !!sv.pagado;
       var tile = card.querySelector('.svc[data-svc="' + s.key + '"]');
       tile.classList.toggle("paid", !!sv.pagado);
       if(!isFocused(val)) val.value = sv.valor || "";
+      if(who && !isFocused(who)) who.value = sv.pagadoPor || "inquilino";
+      if(tag) tag.hidden = sv.pagadoPor !== "propietario";
+      if(sv.pagadoPor === "propietario") descuentoServicios += (sv.valor || 0);
     });
 
-    var neto = (r.alquiler || 0) - (r.expensasExtra || 0) - (r.arreglos || 0);
+    var neto = (r.alquiler || 0) - (r.expensasExtra || 0) - (r.arreglos || 0) - descuentoServicios;
     var netoEl = card.querySelector('[data-role="neto"]');
-    netoEl.textContent = fmtMoney(neto);
+    netoEl.textContent = fmtMoney(neto, moneda);
     netoEl.className = "nval mono " + (neto < 0 ? "neg" : (neto > 0 ? "pos" : ""));
+
+    var fx = card.querySelector('[data-role="fxhint"]');
+    if(fx){
+      if(moneda === "ARS" && dolarMes > 0 && r.alquiler > 0){
+        fx.hidden = false;
+        fx.textContent = "≈ " + fmtMoney(r.alquiler / dolarMes, "USD") + " al dólar de referencia ($ " + dolarMes + ")";
+      } else {
+        fx.hidden = true;
+      }
+    }
   }
 
   function reorderGrid(){
@@ -623,20 +742,63 @@
   }
 
   function recomputeStats(){
-    var cobrado = 0, descuentos = 0, pendientes = 0;
+    var cobradoARS = 0, cobradoUSD = 0, descARS = 0, descUSD = 0, pendientes = 0;
+    var hasARS = false, hasUSD = false;
     properties.forEach(function(p){
       var r = recordsByProp[p.id] || defaultRecord();
-      cobrado += r.alquiler || 0;
-      descuentos += (r.expensasExtra || 0) + (r.arreglos || 0);
+      var moneda = p.moneda === "USD" ? "USD" : "ARS";
+      if(moneda === "USD") hasUSD = true; else hasARS = true;
+      var desc = (r.expensasExtra || 0) + (r.arreglos || 0);
       SERVICIOS.forEach(function(s){
-        if(!r.servicios[s.key] || !r.servicios[s.key].pagado) pendientes++;
+        var sv = r.servicios[s.key];
+        if(!sv || !sv.pagado) pendientes++;
+        if(sv && sv.pagadoPor === "propietario") desc += (sv.valor || 0);
       });
+      if(moneda === "USD"){ cobradoUSD += r.alquiler || 0; descUSD += desc; }
+      else { cobradoARS += r.alquiler || 0; descARS += desc; }
     });
-    document.getElementById("statCobrado").textContent = fmtMoney(cobrado);
-    document.getElementById("statDescuentos").textContent = fmtMoney(descuentos);
-    document.getElementById("statNeto").textContent = fmtMoney(cobrado - descuentos);
+    document.getElementById("statCobrado").textContent = formatDual(cobradoARS, cobradoUSD, hasARS, hasUSD);
+    document.getElementById("statDescuentos").textContent = formatDual(descARS, descUSD, hasARS, hasUSD);
+    document.getElementById("statNeto").textContent = formatDual(cobradoARS - descARS, cobradoUSD - descUSD, hasARS, hasUSD);
     document.getElementById("statPendientes").textContent = properties.length ? (pendientes + " / " + (properties.length * SERVICIOS.length)) : "0";
   }
+
+  // ---------- tipo de cambio compartido ----------
+
+  function refreshAllCurrencyDependent(){
+    properties.forEach(function(p){ updateCardRecord(p.id); });
+    recomputeStats();
+  }
+
+  function loadDolar(){
+    var input = document.getElementById("dolarInput");
+    if(!sb){ return Promise.resolve(); }
+    return sb.from("alquileres_tipo_cambio").select("dolar").eq("mes", currentMonth).maybeSingle().then(function(res){
+      dolarMes = (!res.error && res.data) ? (Number(res.data.dolar) || 0) : 0;
+      if(dolarMes > 0) lastKnownDolar = dolarMes;
+      if(input && !isFocused(input)){
+        input.value = dolarMes || "";
+        input.placeholder = dolarMes ? "" : (lastKnownDolar ? String(lastKnownDolar) : "");
+      }
+      refreshAllCurrencyDependent();
+    });
+  }
+
+  function saveDolar(value){
+    dolarMes = value;
+    refreshAllCurrencyDependent();
+    if(!sb){ setStatus("offline"); return; }
+    debounce(dolarTimerMap, "dolar", function(){
+      setStatus("saving");
+      sb.from("alquileres_tipo_cambio").upsert({mes: currentMonth, dolar: dolarMes}).then(function(res){
+        setStatus(res.error ? "offline" : "online");
+      });
+    }, 550);
+  }
+
+  document.getElementById("dolarInput").addEventListener("input", function(e){
+    saveDolar(Number(e.target.value) || 0);
+  });
 
   // ---------- persistence (Supabase) ----------
 
@@ -669,7 +831,8 @@
         alquiler: r.alquiler,
         servicios: r.servicios,
         expensas_extra: r.expensasExtra,
-        arreglos: r.arreglos
+        arreglos: r.arreglos,
+        modo_pago: r.modoPago
       };
       sb.from("alquileres_registros").upsert(row).then(function(res){
         setStatus(res.error ? "offline" : "online");
@@ -700,8 +863,10 @@
       nombre: data.nombre,
       direccion: data.direccion,
       inquilino: data.inquilino,
+      email: data.email,
       contrato_hasta: data.contratoHasta || null,
-      orden: Date.now()
+      orden: Date.now(),
+      moneda: data.moneda || "ARS"
     }).select().single().then(function(res){
       if(res.error || !res.data){ setStatus("offline"); return; }
       var prop = rowToProp(res.data);
@@ -731,6 +896,8 @@
           '<label>Nombre<input type="text" id="nfNombre" placeholder="Depto 3B, Local Belgrano…"/></label>' +
           '<label>Dirección<input type="text" id="nfDireccion" placeholder="Calle 123, piso, depto"/></label>' +
           '<label>Inquilino<input type="text" id="nfInquilino" placeholder="Nombre del inquilino"/></label>' +
+          '<label>Email de contacto<input type="email" id="nfEmail" placeholder="inquilino@mail.com"/></label>' +
+          '<label>Moneda del alquiler<select id="nfMoneda"><option value="ARS">Pesos (ARS)</option><option value="USD">Dólares (USD)</option></select></label>' +
           '<label>Contrato vence<input type="date" id="nfFecha"/></label>' +
           '<div class="actions">' +
             '<button type="button" class="btn ghost" id="nfCancel">Cancelar</button>' +
@@ -745,7 +912,9 @@
           nombre: nombre,
           direccion: document.getElementById("nfDireccion").value.trim(),
           inquilino: document.getElementById("nfInquilino").value.trim(),
-          contratoHasta: document.getElementById("nfFecha").value || ""
+          email: document.getElementById("nfEmail").value.trim(),
+          contratoHasta: document.getElementById("nfFecha").value || "",
+          moneda: document.getElementById("nfMoneda").value || "ARS"
         });
         showTrigger();
       });
@@ -793,9 +962,10 @@
     currentMonth = key;
     monthLabel.textContent = labelForMonth(currentMonth);
     properties.forEach(function(p){ recordsByProp[p.id] = defaultRecord(); updateCardRecord(p.id); });
+    dolarMes = 0;
     recomputeStats();
     setStatus("saving");
-    loadRecords().then(function(){ setStatus("online"); });
+    Promise.all([loadRecords(), loadDolar()]).then(function(){ setStatus("online"); });
   }
 
   document.getElementById("prevMonth").addEventListener("click", function(){ goToMonth(shiftMonth(currentMonth,-1)); });
@@ -811,7 +981,7 @@
       setStatus("offline");
     } else {
       setStatus("saving");
-      loadProperties().then(loadRecords).then(function(){
+      loadProperties().then(loadRecords).then(loadDolar).then(function(){
         setStatus("online");
       }).catch(function(){
         setStatus("offline");
