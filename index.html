@@ -81,6 +81,7 @@
   .titleblock .sub{ color:var(--ink-soft); font-size:0.88rem; }
   .status{ display:inline-flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--ink-soft); margin-top:6px; }
   .status .dot{ width:7px; height:7px; border-radius:50%; background:var(--good); flex:none; }
+  .status .detail{ color:var(--bad); }
   .status.offline .dot{ background:var(--warn); }
   .status.saving .dot{ background:var(--accent); animation:pulse 1s ease-in-out infinite; }
   @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
@@ -305,6 +306,7 @@
     color: var(--ink);
   }
   .newform input:focus{ outline:none; border-color:var(--accent); }
+  .newform .err{ font-size:0.78rem; color:var(--bad); }
   .newform .actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:4px; }
   .btn{ border:none; border-radius:8px; padding:8px 14px; font-size:0.85rem; cursor:pointer; }
   .btn.primary{ background:var(--accent); color:var(--accent-ink); font-weight:600; }
@@ -365,7 +367,7 @@
     <div class="titleblock">
       <h1>Control de Alquileres</h1>
       <div class="sub">Cobros, servicios y descuentos por propiedad</div>
-      <div class="status" id="statusLine"><span class="dot"></span><span id="statusText">Conectando…</span></div>
+      <div class="status" id="statusLine"><span class="dot"></span><span id="statusText">Conectando…</span><span id="statusDetail" class="detail"></span></div>
     </div>
     <div class="monthnav">
       <button id="prevMonth" aria-label="Mes anterior">‹</button>
@@ -532,11 +534,20 @@
   }
   function isFocused(el){ return document.activeElement === el; }
 
-  function setStatus(mode){
+  function setStatus(mode, detail){
     statusLine.classList.remove("offline","saving");
-    if(mode === "offline"){ statusLine.classList.add("offline"); statusText.textContent = "Sin conexión — revisá tu internet o la configuración de Supabase"; }
-    else if(mode === "saving"){ statusLine.classList.add("saving"); statusText.textContent = "Guardando…"; }
-    else { statusText.textContent = "Guardado en la nube"; }
+    var detailEl = document.getElementById("statusDetail");
+    if(mode === "offline"){
+      statusLine.classList.add("offline");
+      statusText.textContent = "Sin conexión — revisá tu internet o la configuración de Supabase";
+      if(detailEl) detailEl.textContent = detail ? (" (" + detail + ")") : "";
+    } else if(mode === "saving"){
+      statusLine.classList.add("saving"); statusText.textContent = "Guardando…";
+      if(detailEl) detailEl.textContent = "";
+    } else {
+      statusText.textContent = "Guardado en la nube";
+      if(detailEl) detailEl.textContent = "";
+    }
   }
 
   // ---------- mapping DB rows <-> local objects ----------
@@ -767,7 +778,7 @@
         valor_pactado: nuevo,
         ultimo_ajuste_mes: currentMonth
       }).eq("id", prop.id).then(function(res){
-        setStatus(res.error ? "offline" : "online");
+        setStatus(res.error ? "offline" : "online", res.error && res.error.message);
       });
     });
 
@@ -1021,7 +1032,7 @@
       var body = {}; body[column] = (value === "" || value === null || value === undefined) ? null : value;
       setStatus("saving");
       sb.from("alquileres_propiedades").update(body).eq("id", propId).then(function(res){
-        setStatus(res.error ? "offline" : "online");
+        setStatus(res.error ? "offline" : "online", res.error && res.error.message);
       });
     }, 500);
   }
@@ -1048,7 +1059,7 @@
         tipo_cambio_pago: r.tipoCambioPago
       };
       sb.from("alquileres_registros").upsert(row).then(function(res){
-        setStatus(res.error ? "offline" : "online");
+        setStatus(res.error ? "offline" : "online", res.error && res.error.message);
       });
     }, 550);
   }
@@ -1064,7 +1075,7 @@
     if(sb){
       setStatus("saving");
       sb.from("alquileres_propiedades").delete().eq("id", propId).then(function(res){
-        setStatus(res.error ? "offline" : "online");
+        setStatus(res.error ? "offline" : "online", res.error && res.error.message);
       });
     }
   }
@@ -1085,7 +1096,11 @@
       ajuste_porcentaje: 0,
       valor_pactado: 0
     }).select().single().then(function(res){
-      if(res.error || !res.data){ setStatus("offline"); return; }
+      if(res.error || !res.data){
+        setStatus("offline", res.error && res.error.message);
+        alert("No se pudo guardar la propiedad nueva.\n\n" + (res.error ? res.error.message : "Respuesta vacía del servidor."));
+        return;
+      }
       var prop = rowToProp(res.data);
       properties.push(prop);
       ensureCard(prop);
@@ -1116,6 +1131,7 @@
           '<label>Email de contacto<input type="email" id="nfEmail" placeholder="inquilino@mail.com"/></label>' +
           '<label>Moneda del alquiler<select id="nfMoneda"><option value="ARS">Pesos (ARS)</option><option value="USD">Dólares (USD)</option></select></label>' +
           '<label>Contrato vence<input type="date" id="nfFecha"/></label>' +
+          '<div class="err" id="nfErr" style="min-height:0"></div>' +
           '<div class="actions">' +
             '<button type="button" class="btn ghost" id="nfCancel">Cancelar</button>' +
             '<button type="button" class="btn primary" id="nfSave">Guardar</button>' +
@@ -1123,8 +1139,16 @@
         '</div>';
       document.getElementById("nfCancel").addEventListener("click", showTrigger);
       document.getElementById("nfSave").addEventListener("click", function(){
-        var nombre = document.getElementById("nfNombre").value.trim();
-        if(!nombre){ document.getElementById("nfNombre").focus(); return; }
+        var nombreInput = document.getElementById("nfNombre");
+        var nombre = nombreInput.value.trim();
+        var err = document.getElementById("nfErr");
+        if(!nombre){
+          nombreInput.focus();
+          nombreInput.style.borderColor = "var(--bad)";
+          err.textContent = "Ponele un nombre a la propiedad para poder guardarla (es el único campo obligatorio).";
+          return;
+        }
+        err.textContent = "";
         addProperty({
           nombre: nombre,
           direccion: document.getElementById("nfDireccion").value.trim(),
@@ -1150,7 +1174,7 @@
   function loadProperties(){
     if(!sb){ setStatus("offline"); return Promise.resolve(); }
     return sb.from("alquileres_propiedades").select("*").order("orden", {ascending:true}).then(function(res){
-      if(res.error){ setStatus("offline"); return; }
+      if(res.error){ setStatus("offline", res.error.message); return; }
       properties = (res.data || []).map(rowToProp);
       properties.forEach(function(p){
         ensureCard(p);
